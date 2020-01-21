@@ -5,25 +5,31 @@ const AST_TYPE = {
   'EXPRESSION': 'Expression',
 }
 
+const LEX_TYPE = {
+  'NUMBER': 'Number',
+  'OPERATOR': 'Operator',
+  'EOF': Symbol.for('EOF'),
+}
+
 const complexCase = '2 + 32 * 44 + 4 / 54 * 4 - 654\n'
 const MUTCase = '4 / 3 * 34 * 2 /33 * 4 * 3 \n'
-const errCase = '2  + 3'
+const errCase = '2  + 3 -\n'
 
 const tokens = []
-const emitTokens = (type, value) => {
+const emitTokens = (type, value, index) => {
   tokens.push({
-    type, value
+    type, value, index
   })
 }
 
 const inNumber = (() => {
   let token = []
-  return (char) => {
+  return (char, index) => {
     if (/^[0-9]$/.test(char)) {
       token.push(char)
       return inNumber
     } else {
-      emitTokens('Number', token.join(''))
+      emitTokens(LEX_TYPE.NUMBER, token.join(''), index )
       token = []
       return start(char)
     }
@@ -31,33 +37,33 @@ const inNumber = (() => {
 })()
 
 const token = []
-const start = char => {
+const start = (char, index) => {
   if (/^[0-9]$/.test(char)) {
     return inNumber(char)
   }
 
   if (/^\+$/.test(char)) {
-    emitTokens(char, char)
+    emitTokens(LEX_TYPE.OPERATOR, char, index)
     return start
   }
 
   if (/^-$/.test(char)) {
-    emitTokens(char, char)
+    emitTokens(LEX_TYPE.OPERATOR, char, index)
     return start
   }
 
   if (/^\*$/.test(char)) {
-    emitTokens(char, char)
+    emitTokens(LEX_TYPE.OPERATOR, char, index)
     return start
   }
 
   if (/^\/$/.test(char)) {
-    emitTokens(char, char)
+    emitTokens(LEX_TYPE.OPERATOR, char, index)
     return start
   }
 
   if (/^\n$/.test(char)) {
-    emitTokens(Symbol.for('EOF'), Symbol.for('EOF'))
+    emitTokens(LEX_TYPE.EOF, LEX_TYPE.EOF, index)
   }
 
   return start
@@ -104,10 +110,10 @@ const AdditiveExpression = source => {
     return AdditiveExpression(source)
   }
 
-  if (source[0].type === AST_TYPE.ADDITIVEEXPRESSION && source[1].type === '+') {
+  if (source[0].type === AST_TYPE.ADDITIVEEXPRESSION && source[1] && source[1].type === LEX_TYPE.OPERATOR && (source[1].value === '+' || source[1].value === '-')) {
     const node = {
       type: AST_TYPE.ADDITIVEEXPRESSION,
-      operator: '+',
+      operator: source[1].value,
       children: [
         source.shift(),
         source.shift(),
@@ -115,22 +121,10 @@ const AdditiveExpression = source => {
     }
 
     MultiplicativeExpression(source)
-    node.children.push(source.shift())
-    source.unshift(node)
-    return AdditiveExpression(source)
-  }
 
-  if (source[0].type === AST_TYPE.ADDITIVEEXPRESSION && source[1].type === '-') {
-    const node = {
-      type: AST_TYPE.ADDITIVEEXPRESSION,
-      operator: '-',
-      children: [
-        source.shift(),
-        source.shift(),
-      ]
+    if (source[0].type !== AST_TYPE.MULTIPLICATIVEEXPRESSION) {
+      throw new TypeError(`Unexpected token '${source[0].value === LEX_TYPE.EOF ? 'EOF' : source[0].value}' at the ${source[0].index}st character, it should be a Number or other expressions`)
     }
-
-    MultiplicativeExpression(source)
     node.children.push(source.shift())
     source.unshift(node)
     return AdditiveExpression(source)
@@ -154,25 +148,14 @@ const MultiplicativeExpression = source => {
     return MultiplicativeExpression(source)
   }
 
-  if (source[0].type === AST_TYPE.MULTIPLICATIVEEXPRESSION && source[1] && source[1].type === '*' && source[2].type === AST_TYPE.NUMBER) {
-    const node = {
-      type: AST_TYPE.MULTIPLICATIVEEXPRESSION,
-      operator: "*",
-      children: [
-        source.shift(),
-        source.shift(),
-        source.shift()
-      ]
+  if (source[0].type === AST_TYPE.MULTIPLICATIVEEXPRESSION && source[1] && source[1].type === LEX_TYPE.OPERATOR && (source[1].value === '*' || source[1].value === '/')) {
+    if (source[2].type !== LEX_TYPE.NUMBER) {
+      throw new TypeError(`Unexpected token '${source[2].value}' at the ${source[2].index}st character, it should be a Number`)
     }
 
-    source.unshift(node)
-    return MultiplicativeExpression(source)
-  }
-
-  if (source[0].type === AST_TYPE.MULTIPLICATIVEEXPRESSION && source[1] && source[1].type === '/' && source[2].type === AST_TYPE.NUMBER) {
     const node = {
       type: AST_TYPE.MULTIPLICATIVEEXPRESSION,
-      operator: "/",
+      operator: source[1].value,
       children: [
         source.shift(),
         source.shift(),
@@ -228,7 +211,7 @@ const testCase = errCase
 
 for (let state = start, index = 0; index < testCase.length; index++) {
   const char = testCase[index];
-  state = state(char)
+  state = state(char, index)
 }
 
 const ast = Expression(tokens)
