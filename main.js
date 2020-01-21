@@ -2,18 +2,16 @@ const AST_TYPE = {
   'MULTIPLICATIVEEXPRESSION': 'MultiplicativeExpression',
   'ADDITIVEEXPRESSION': 'AdditiveExpression',
   'NUMBER': 'Number',
+  'FACTOR': 'Factor',
   'EXPRESSION': 'Expression',
 }
 
 const LEX_TYPE = {
   'NUMBER': 'Number',
   'OPERATOR': 'Operator',
+  'BRACKETS': 'Brackets',
   'EOF': Symbol.for('EOF'),
 }
-
-const complexCase = '2 + 32 * 44 + 4 / 54 * 4 - 654\n'
-const MUTCase = '4 / 3 * 34 * 2 /33 * 4 * 3 \n'
-const errCase = '2  + 3 -\n'
 
 const tokens = []
 const emitTokens = (type, value, index) => {
@@ -22,14 +20,21 @@ const emitTokens = (type, value, index) => {
   })
 }
 
-const inNumber = (() => {
+const numberOrOperator = (() => {
   let token = []
   return (char, index) => {
     if (/^[0-9]$/.test(char)) {
       token.push(char)
-      return inNumber
-    } else {
-      emitTokens(LEX_TYPE.NUMBER, token.join(''), index )
+      return numberOrOperator
+    } else if (token.length === 0 && char === '-'){
+      token.push(char)
+      return numberOrOperator
+    }else{
+      if (token.length === 1 && token[0] === '-'){
+        emitTokens(LEX_TYPE.OPERATOR, token[0], index-1 )
+      }else{
+        emitTokens(LEX_TYPE.NUMBER, token.join(''), index )
+      }
       token = []
       return start(char)
     }
@@ -38,16 +43,11 @@ const inNumber = (() => {
 
 const token = []
 const start = (char, index) => {
-  if (/^[0-9]$/.test(char)) {
-    return inNumber(char)
+  if (/^[0-9\-]$/.test(char)) {
+    return numberOrOperator(char)
   }
 
   if (/^\+$/.test(char)) {
-    emitTokens(LEX_TYPE.OPERATOR, char, index)
-    return start
-  }
-
-  if (/^-$/.test(char)) {
     emitTokens(LEX_TYPE.OPERATOR, char, index)
     return start
   }
@@ -79,7 +79,10 @@ const start = (char, index) => {
  *    <MultiplicativeExpression> | <AdditiveExpression><+><MultiplicativeExpression> | <AdditiveExpression><-><MultiplicativeExpression> 
  * 
  * <MultiplicativeExpression> ::=
- *    <Number> | <MultiplicativeExpression><*><Number> | <MultiplicativeExpression></><Number>
+ *    <Factor> | <MultiplicativeExpression><*><Factor> | <MultiplicativeExpression></><Factor>
+ * 
+ * <Factor> ::=
+ *    <Number> | <(><AdditiveExpression><)>
  */
 const Expression = source => {
   if (source[0].type === AST_TYPE.ADDITIVEEXPRESSION && source[1].type === Symbol.for('EOF')) {
@@ -135,6 +138,9 @@ const AdditiveExpression = source => {
   }
 
   MultiplicativeExpression(source)
+  if (source[0].type === LEX_TYPE.OPERATOR){
+    throw new TypeError(`Unexpected token '${source[0].value}' at the ${source[0].index}st character, the operator must be preceded by a number`)
+  }
   return AdditiveExpression(source)
 }
 
@@ -172,6 +178,19 @@ const MultiplicativeExpression = source => {
   }
 }
 
+const Factor = source =>{
+  if (source[0].type === AST_TYPE.NUMBER) {
+    const node = {
+      type: AST_TYPE.FACTOR,
+      children: [source[0]]
+    }
+    source[0] = node
+    return Factor(source)
+  }
+
+  
+}
+
 
 const evaluate = node => {
   switch (node.type) {
@@ -207,7 +226,14 @@ const evaluate = node => {
       throw new Error(`Unhandled AST type: ${node && node.type}`)
   }
 }
-const testCase = errCase
+
+const complexCase = '2 + 32 * 44 + 4 / 54 * 4 - 654\n'
+const MUTCase = '4 / 3 * 34 * 2 /33 * 4 * 3 \n'
+const errCase = '2  + 3 -\n'
+const negativeCase = '-1 + 1 - -1 + -1\n' 
+const negativeErrorCase = '--1' 
+
+const testCase = negativeErrorCase
 
 for (let state = start, index = 0; index < testCase.length; index++) {
   const char = testCase[index];
